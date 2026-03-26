@@ -7,4 +7,4 @@ joblib
 reportlab
 shap
 plotly
-  
+openai
