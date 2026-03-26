@@ -4,9 +4,13 @@ import plotly.graph_objects as go
 import os
 import openai
 
+api_key = os.getenv("OPENAI_API_KEY")
+
 from model_utils import predict
 from report_generator import generate_report, generate_full_report
 from login import login
+from openai import OpenAI
+client = OpenAI(api_key=api_key)
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="AI Credit Risk System", layout="wide")
