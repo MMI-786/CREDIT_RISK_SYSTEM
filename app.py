@@ -1,246 +1,175 @@
 import streamlit as st
 import pandas as pd
+import joblib
 import plotly.graph_objects as go
-import os
-import openai
 
-api_key = os.getenv("OPENAI_API_KEY")
-
-from model_utils import predict
-from report_generator import generate_report, generate_full_report
 from login import login
-from openai import OpenAI
-client = OpenAI(api_key=api_key)
+from database import create_tables, get_history, save_history, get_users
 
-# ---------------- PAGE CONFIG ----------------
+# ---------------- CONFIG ----------------
 st.set_page_config(page_title="AI Credit Risk System", layout="wide")
+create_tables()
 
-# ---------------- PREMIUM UI ----------------
-st.markdown("""
-<style>
-.stApp {
-    background-color: #0e1117;
-    color: white;
-}
-h1, h2, h3 {
-    color: #00C9A7;
-}
-.stButton>button {
-    border-radius: 10px;
-    background-color: #00C9A7;
-    color: white;
-    font-weight: bold;
-}
-.stMetric {
-    background-color: #1c1f26;
-    padding: 10px;
-    border-radius: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# ---------------- OPENAI ----------------
-openai.api_key = "YOUR_API_KEY"   # 🔑 Replace
-
-def real_llm(user_input, age, income, loan, credit, prob):
-
-    prompt = f"""
-    You are a financial AI expert.
-
-    If user greets (hi/hello), respond politely.
-
-    If user asks about borrower:
-    - Explain risk clearly
-    - Give 2–3 reasons
-    - Give recommendation (approve/reject)
-
-    Borrower Details:
-    Age: {age}
-    Income: {income}
-    Loan: {loan}
-    Credit Score: {credit}
-    Default Probability: {prob}
-
-    User Question:
-    {user_input}
-    """
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    return response['choices'][0]['message']['content']
-
-
-# ---------------- LOGIN ----------------
+# ---------------- SESSION ----------------
 if "logged_in" not in st.session_state:
-    st.session_state["logged_in"] = False
+    st.session_state.logged_in = False
 
-if not st.session_state["logged_in"]:
+if not st.session_state.logged_in:
     login()
     st.stop()
 
-# ---------------- HEADER ----------------
-st.title("💳 AI Credit Risk Prediction System")
-
+# ---------------- STYLE ----------------
 st.markdown("""
-### 🔍 Intelligent Credit Risk Assessment Platform  
-AI-powered system for real-time borrower evaluation and decision support.
-""")
+<style>
 
-st.write(f"👤 {st.session_state['user']} | Role: {st.session_state['role']}")
+/* BACKGROUND */
+.stApp {
+    background: radial-gradient(circle at top, #1e293b, #020617);
+    color: white;
+}
 
-if st.button("Logout"):
-    st.session_state["logged_in"] = False
+/* SIDEBAR */
+section[data-testid="stSidebar"] {
+    background: rgba(255,255,255,0.04);
+    backdrop-filter: blur(10px);
+}
+
+/* CARD */
+.card {
+    padding:20px;
+    border-radius:15px;
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(15px);
+    border:1px solid rgba(255,255,255,0.08);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    margin-bottom:15px;
+}
+
+/* BUTTON */
+.stButton>button {
+    border-radius:10px;
+    background: linear-gradient(90deg,#3b82f6,#60a5fa);
+    color:white;
+}
+
+/* METRIC */
+.metric {
+    font-size:22px;
+    font-weight:600;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ---------------- MODEL ----------------
+model = joblib.load("model.pkl")
+
+def predict(x):
+    return model.predict([x])[0], model.predict_proba([x])[0][1]
+
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("💳 AI System")
+menu = ["Dashboard", "Prediction", "Analytics", "Admin"]
+choice = st.sidebar.radio("Navigation", menu)
+
+st.sidebar.write(f"👤 {st.session_state.user}")
+
+if st.sidebar.button("Logout"):
+    st.session_state.logged_in = False
     st.rerun()
 
-st.divider()
+# ---------------- HEADER ----------------
+st.title("💳 AI Credit Risk System")
+st.caption("AI-powered credit intelligence platform")
 
-# ---------------- INPUT ----------------
-st.subheader("📥 Enter Borrower Details")
+# =========================================================
+# 📊 DASHBOARD
+# =========================================================
+if choice == "Dashboard":
 
-col1, col2 = st.columns(2)
-
-with col1:
-    age = st.number_input("Age", value=30)
-    income = st.number_input("Income", value=30000)
-
-with col2:
-    loan = st.number_input("Loan Amount", value=10000)
-    credit = st.number_input("Credit Score", value=650)
-
-st.divider()
-
-# ---------------- PREDICT ----------------
-if st.button("🚀 Predict Risk"):
-
-    result, prob = predict([age, income, loan, credit])
-    label = "High Risk" if result == 1 else "Low Risk"
-
-    st.markdown("## 📊 Prediction Summary")
+    df = pd.DataFrame(get_history(),
+        columns=["id","age","income","loan","credit","prob","result"])
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
-        st.metric("Probability", round(prob, 2))
+        st.markdown(f"<div class='card'><div class='metric'>Total</div><h2>{len(df)}</h2></div>", unsafe_allow_html=True)
 
     with col2:
-        st.metric("Risk Level", label)
+        avg = round(df["prob"].mean(),2) if not df.empty else 0
+        st.markdown(f"<div class='card'><div class='metric'>Avg Risk</div><h2>{avg}</h2></div>", unsafe_allow_html=True)
 
     with col3:
-        st.metric("Credit Score", credit)
+        rejected = (df["result"]=="Rejected").sum() if not df.empty else 0
+        st.markdown(f"<div class='card'><div class='metric'>Rejected</div><h2>{rejected}</h2></div>", unsafe_allow_html=True)
 
-    if result == 1:
-        st.error("⚠ High Risk Borrower")
-    else:
-        st.success("✅ Safe Borrower")
+# =========================================================
+# 🤖 PREDICTION
+# =========================================================
+elif choice == "Prediction":
 
-    # SAVE HISTORY
-    new = pd.DataFrame([[age, income, loan, credit, prob, label, st.session_state["user"]]],
-                       columns=["age","income","loan","credit","probability","result","user"])
-
-    if os.path.exists("history.csv"):
-        df = pd.read_csv("history.csv")
-        df = pd.concat([df, new], ignore_index=True)
-    else:
-        df = new
-
-    df.to_csv("history.csv", index=False)
-
-    # ---------------- GAUGE ----------------
-    st.subheader("📈 Risk Gauge")
-
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=prob * 100,
-        title={'text': "Risk %"}
-    ))
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.divider()
-
-    # ---------------- LLM ----------------
-    st.subheader("🤖 AI Assistant (LLM Powered)")
-
-    user_input = st.text_input("Ask AI (e.g., 'hi', 'Is this risky?')")
-
-    if st.button("Ask AI"):
-
-        if user_input.strip() == "":
-            st.warning("Please enter a question")
-        else:
-            answer = real_llm(user_input, age, income, loan, credit, prob)
-            st.write(answer)
-
-    st.divider()
-
-    # ---------------- REPORT ----------------
-    generate_report(label, prob)
-
-    with open("report.pdf", "rb") as f:
-        st.download_button("📄 Download Report", f)
-
-# ---------------- BULK ----------------
-st.subheader("📂 Bulk Loan Prediction (Upload Multiple Customers)")
-
-file = st.file_uploader("Upload CSV")
-
-if file:
-    df = pd.read_csv(file)
-    probs = []
-
-    for _, r in df.iterrows():
-        _, p = predict([r["age"], r["income"], r["loan"], r["credit"]])
-        probs.append(p)
-
-    df["Prediction"] = probs
-    st.dataframe(df)
-
-st.divider()
-
-# ---------------- ANALYTICS ----------------
-st.subheader("📊 System Analytics Dashboard")
-
-try:
-    df = pd.read_csv("history.csv")
+    st.subheader("Loan Risk Prediction")
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.metric("Total Predictions", len(df))
+        age = st.number_input("Age", value=30)
+        income = st.number_input("Income", value=30000)
 
     with col2:
-        st.metric("Average Risk", round(df["probability"].mean(), 2))
+        loan = st.number_input("Loan Amount", value=10000)
+        credit = st.number_input("Credit Score", value=650)
 
-    st.bar_chart(df["result"].value_counts())
-    st.line_chart(df["probability"])
+    if st.button("Analyze"):
 
-    st.dataframe(df)
+        _, p = predict([age, income, loan, credit])
+        decision = "Approved" if p < 0.3 else "Rejected"
 
-except:
-    st.info("No data available yet")
+        st.markdown(f"<div class='card'><h3>{decision}</h3><p>Risk: {round(p,2)}</p></div>", unsafe_allow_html=True)
 
-# ---------------- ADMIN ----------------
-if st.session_state["role"] == "Admin":
+        save_history(age, income, loan, credit, p, decision)
 
-    st.divider()
-    st.subheader("👑 Admin Panel")
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=p * 100,
+            title={'text': "Risk %"}
+        ))
+        st.plotly_chart(fig, use_container_width=True)
 
-    users = pd.read_csv("users.csv")
-    st.dataframe(users)
+# =========================================================
+# 📉 ANALYTICS
+# =========================================================
+elif choice == "Analytics":
 
-    u = st.selectbox("Delete user", users["username"])
+    st.subheader("Analytics")
 
-    if st.button("Delete User"):
-        users = users[users["username"] != u]
-        users.to_csv("users.csv", index=False)
-        st.success("User deleted")
+    df = pd.DataFrame(get_history(),
+        columns=["id","age","income","loan","credit","prob","result"])
 
-# ---------------- FULL REPORT ----------------
-if st.button("📄 Generate Full Report"):
-    generate_full_report()
+    if not df.empty:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.bar_chart(df["result"].value_counts())
+        st.line_chart(df["prob"])
+        st.markdown("</div>", unsafe_allow_html=True)
+    else:
+        st.info("No data available")
 
-    with open("full_report.pdf", "rb") as f:
-        st.download_button("Download Full Report", f)
+# =========================================================
+# 🔐 ADMIN
+# =========================================================
+elif choice == "Admin":
+
+    if st.session_state.role != "Admin":
+        st.error("Access denied")
+    else:
+        st.subheader("Admin Panel")
+
+        users = pd.DataFrame(get_users(), columns=["id","username","role"])
+        df = pd.DataFrame(get_history(),
+            columns=["id","age","income","loan","credit","prob","result"])
+
+        st.markdown("<div class='card'>Users</div>", unsafe_allow_html=True)
+        st.dataframe(users)
+
+        st.markdown("<div class='card'>Applications</div>", unsafe_allow_html=True)
+        st.dataframe(df)

@@ -1,17 +1,30 @@
 import joblib
-import shap
 
-rf = joblib.load("model.pkl")
+# Optional SHAP (safe import)
+try:
+    import shap
+    SHAP_AVAILABLE = True
+except:
+    SHAP_AVAILABLE = False
 
+# Load model
+model = joblib.load("model.pkl")
+
+# ---------------- PREDICT ----------------
 def predict(data):
-    pred = rf.predict([data])[0]
-    prob = rf.predict_proba([data])[0][1]
+    pred = model.predict([data])[0]
+    prob = model.predict_proba([data])[0][1]
     return pred, prob
 
+# ---------------- FEATURE IMPORTANCE ----------------
 def feature_importance():
-    return rf.feature_importances_
+    return model.feature_importances_
 
+# ---------------- SHAP EXPLAIN ----------------
 def shap_explain(data):
-    explainer = shap.TreeExplainer(rf)
+    if not SHAP_AVAILABLE:
+        return None, None
+
+    explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values([data])
     return shap_values, explainer

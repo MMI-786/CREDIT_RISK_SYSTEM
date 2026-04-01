@@ -1,19 +1,28 @@
-from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 import pandas as pd
 
+# ---------------- SINGLE REPORT ----------------
 def generate_report(result, prob):
+
     doc = SimpleDocTemplate("report.pdf")
     styles = getSampleStyleSheet()
 
     content = []
-    content.append(Paragraph("Credit Risk Report", styles["Title"]))
-    content.append(Paragraph(f"Risk: {result}", styles["Normal"]))
-    content.append(Paragraph(f"Probability: {prob}", styles["Normal"]))
+
+    content.append(Paragraph("AI Credit Risk Report", styles["Title"]))
+    content.append(Spacer(1, 12))
+
+    content.append(Paragraph(f"Decision: {result}", styles["Normal"]))
+    content.append(Spacer(1, 10))
+
+    content.append(Paragraph(f"Risk Probability: {round(prob,2)}", styles["Normal"]))
 
     doc.build(content)
 
+# ---------------- FULL SYSTEM REPORT ----------------
 def generate_full_report():
+
     doc = SimpleDocTemplate("full_report.pdf")
     styles = getSampleStyleSheet()
 
@@ -23,6 +32,8 @@ def generate_full_report():
         df = pd.read_csv("history.csv")
 
         content.append(Paragraph("System Report", styles["Title"]))
+        content.append(Spacer(1, 12))
+
         content.append(Paragraph(f"Total Predictions: {len(df)}", styles["Normal"]))
         content.append(Paragraph(f"Average Risk: {round(df['probability'].mean(),2)}", styles["Normal"]))
 

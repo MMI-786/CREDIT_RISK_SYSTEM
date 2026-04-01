@@ -1,65 +1,172 @@
 import streamlit as st
-import pandas as pd
-import hashlib
-import os
+import jwt, datetime
+from database import get_user, add_user, verify_password
 
-FILE = "users.csv"
+SECRET = "mysecretkey"
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def load_users():
-    if os.path.exists(FILE):
-        return pd.read_csv(FILE)
-    else:
-        return pd.DataFrame(columns=["username","password","role"])
-
-def save_user(username, password, role):
-    df = load_users()
-    hashed = hash_password(password)
-
-    new_user = pd.DataFrame([[username, hashed, role]],
-                            columns=["username","password","role"])
-
-    df = pd.concat([df, new_user], ignore_index=True)
-    df.to_csv(FILE, index=False)
+def create_token(user):
+    return jwt.encode({
+        "user": user,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=2)
+    }, SECRET, algorithm="HS256")
 
 def login():
 
-    menu = ["Login", "Sign Up"]
-    choice = st.selectbox("Select Option", menu)
+    st.markdown("""
+    <style>
 
-    df = load_users()
+    /* 🚨 HARD RESET */
+    .block-container {
+        padding: 0 !important;
+        margin: 0 auto !important;
+        max-width: 850px;
+    }
 
-    if choice == "Login":
+    header, footer {visibility:hidden;}
 
-        username = st.text_input("Username")
+    /* 🚨 REMOVE ALL STREAMLIT GAPS */
+    div[data-testid="stVerticalBlock"] {
+        gap: 0 !important;
+    }
+
+    div[data-testid="stVerticalBlock"] > div {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* 🚨 REMOVE EMPTY/USELESS BLOCKS */
+    div:empty {
+        display: none !important;
+    }
+
+    /* 🚨 FORCE COLLAPSE ALL SPACE */
+    section.main > div {
+        padding-top: 0 !important;
+    }
+
+    /* BACKGROUND */
+    .stApp {
+        background: radial-gradient(circle at top, #1e293b, #020617);
+        color: white;
+    }
+
+    /* HEADER */
+    .header {
+        text-align:center;
+        margin-bottom: 10px;
+    }
+
+    .title {
+        font-size:28px;
+        font-weight:600;
+    }
+
+    .subtitle {
+        font-size:13px;
+        color:#94a3b8;
+    }
+
+    /* INFO BAR */
+    .info-bar {
+        max-width:600px;
+        margin: 5px auto 10px auto;
+        padding:10px;
+        border-radius:999px;
+        text-align:center;
+        font-size:13px;
+
+        background: rgba(255,255,255,0.06);
+        backdrop-filter: blur(12px);
+        border:1px solid rgba(255,255,255,0.08);
+    }
+
+    /* CARD */
+    .card {
+        margin-top: 0 !important;
+        padding:28px;
+        border-radius:18px;
+
+        background: rgba(255,255,255,0.06);
+        backdrop-filter: blur(18px);
+
+        border:1px solid rgba(255,255,255,0.08);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+    }
+
+    /* INPUT */
+    .stTextInput input {
+        border-radius:10px;
+        background: rgba(0,0,0,0.5);
+        border:1px solid rgba(255,255,255,0.1);
+        color:white;
+    }
+
+    /* BUTTON */
+    .stButton>button {
+        width:100%;
+        border-radius:10px;
+        background: linear-gradient(90deg,#3b82f6,#60a5fa);
+        color:white;
+    }
+
+    .stRadio > div {
+        justify-content:center;
+    }
+
+    </style>
+    """, unsafe_allow_html=True)
+
+    # HEADER
+    st.markdown("""
+    <div class='header'>
+        <div class='title'>💳 AI Credit Risk System</div>
+        <div class='subtitle'>AI-powered credit intelligence platform</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # INFO BAR (ONLY ONE)
+    st.markdown("""
+    <div class='info-bar'>
+        🚀 Smart Analysis • 🔒 Secure Access • 📊 Real-time Insights • 🤖 AI Engine
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 🚨 HARD FIX: NO EXTRA CONTAINERS USED
+
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+
+    st.subheader("Sign in")
+
+    mode = st.radio("", ["Login","Sign Up"], horizontal=True)
+
+    # LOGIN
+    if mode == "Login":
+        email = st.text_input("Email")
         password = st.text_input("Password", type="password")
 
-        if st.button("Login"):
+        if st.button("Continue"):
+            user = get_user(email)
 
-            hashed = hash_password(password)
-
-            user = df[(df["username"] == username) &
-                      (df["password"] == hashed)]
-
-            if not user.empty:
-                st.session_state["logged_in"] = True
-                st.session_state["user"] = username
-                st.session_state["role"] = user.iloc[0]["role"]
+            if user and verify_password(password, user[2]):
+                st.session_state.logged_in = True
+                st.session_state.user = email
+                st.session_state.role = user[3]
+                st.session_state.token = create_token(email)
+                st.success("Welcome 🚀")
+                st.rerun()
             else:
                 st.error("Invalid credentials")
 
-    elif choice == "Sign Up":
-
-        new_user = st.text_input("Username")
-        new_pass = st.text_input("Password", type="password")
+    # SIGNUP
+    else:
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
         role = st.selectbox("Role", ["Admin","Manager","Analyst"])
 
-        if st.button("Sign Up"):
-
-            if new_user in df["username"].values:
-                st.warning("User exists")
+        if st.button("Create account"):
+            if add_user(email, password, role):
+                st.success("Account created 🎉")
             else:
-                save_user(new_user, new_pass, role)
-                st.success("Account created")
+                st.warning("User already exists")
+
+    st.markdown("</div>", unsafe_allow_html=True)
